@@ -9,14 +9,14 @@ from tkinter import filedialog
 import xml.etree.ElementTree as ET
 
 def get_metrologists_list() -> list:
-    #try:
+    try:
         # Чтение файла с данными metrologists
         with open('metrologists.json', 'r', encoding='utf-8') as file:
             json_data = file.read()
         # Декодирование JSON-строки в список Python
         metrologists = json.loads(json_data)['metrologists']
         return metrologists
-    #except:
+    except:
         return None
 
 def get_token() -> str:
@@ -110,7 +110,7 @@ class RestAPI:
         for record in records:
             verification_id = record.find('.//success/globalID').text
             verification = json.loads(self.verification(verification_id))['result']
-            modification = verification['miInfo']['singleMI']['modification']
+            mitype = verification['miInfo']['singleMI']['mitypeType']
             vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
             valid_date = verification['vriInfo'].get('validDate', None)
             if valid_date:
@@ -118,7 +118,7 @@ class RestAPI:
             applicable = verification['vriInfo'].get('applicable', None)
             conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
             verification_data.append({
-                'TypeMeasuringInstrument': modification,
+                'TypeMeasuringInstrument': mitype,
                 'DateVerification': vrf_date,
                 'DateEndVerification': valid_date,
                 'ResultVerification': conclusion,
