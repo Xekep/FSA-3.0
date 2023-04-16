@@ -7,7 +7,6 @@ from tkinter import messagebox
 from tkinter import ttk
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
-from dateutil.parser import parse
 
 def get_metrologists_list() -> list:
     #try:
@@ -112,10 +111,10 @@ class RestAPI:
             verification_id = record.find('.//success/globalID').text
             verification = json.loads(self.verification(verification_id))['result']
             modification = verification['miInfo']['singleMI']['modification']
-            vrf_date = parse(verification['vriInfo']['vrfDate']).strftime('%Y-%m-%d')
+            vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
             valid_date = verification['vriInfo'].get('validDate', None)
             if valid_date:
-                valid_date = parse(valid_date).strftime('%Y-%m-%d')
+                valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
             applicable = verification['vriInfo'].get('applicable', None)
             conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
             verification_data.append({
