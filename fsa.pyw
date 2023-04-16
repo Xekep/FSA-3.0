@@ -147,18 +147,17 @@ class RestAPI:
 
 class MetrologyForm:           
     def __init__(self, master):
-
+        self.master = master
         token = get_token()
         if token == None or len(token) == 0:
             messagebox.showerror('Ошибка', 'Токен не найден')
-            exit()
+            os._exit(1)
         self.metrologists_list = get_metrologists_list()
         if self.metrologists_list == None or len(self.metrologists_list) == 0:
             messagebox.showerror('Ошибка', 'Не удалось считать metrologists.json')
-            exit()
+            os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master = master
         self.master.title('Костыль 3.0')
         self.master.resizable(False, False)
         
