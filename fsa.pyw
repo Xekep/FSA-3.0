@@ -59,7 +59,7 @@ def createXML(folder, protocol_id, first_name, last_name, snils, records, save_m
         # Создание нового файла XML при достижении максимального количества записей
         if (index + 1) % 999 == 0:
             file_counter += 1
-            file_name = os.path.join(folder, protocol_id) + (f'_part{file_counter}' if multipart else '') + '.xml'
+            file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
             xml_string = ET.tostring(xml, encoding='unicode')
             with open(file_name, 'w', encoding='utf-8') as f:
@@ -71,7 +71,7 @@ def createXML(folder, protocol_id, first_name, last_name, snils, records, save_m
     # Добавление оставшихся записей в последний файл
     if len(verification_measuring_instrument_data) > 0: # 9127046
         file_counter += 1
-        file_name = os.path.join(folder, protocol_id) + (f'_part{file_counter}' if multipart else '') + '.xml'
+        file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
         ET.SubElement(xml, 'SaveMethod').text = str(save_method)
         xml_string = ET.tostring(xml, encoding='unicode')
         with open(file_name, 'w', encoding='utf-8') as f:
@@ -193,7 +193,7 @@ class MetrologyForm:
     
     def submit_form(self):
         # Считываем введенные данные
-        protocol_id = self.number_entry.get()
+        protocol_id = int(self.number_entry.get())
         if protocol_id < 100000:
             return
         metrologist = self.metrologist_var.get()
