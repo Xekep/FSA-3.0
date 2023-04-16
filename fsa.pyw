@@ -53,7 +53,7 @@ def createXML(folder, protocol_id, first_name, last_name, snils, records, save_m
         name = ET.SubElement(approved_employee, 'Name')
         ET.SubElement(name, 'Last').text = last_name
         ET.SubElement(name, 'First').text = first_name
-        ET.SubElement(approved_employee, 'SNILS').text = str(snils)
+        ET.SubElement(approved_employee, 'SNILS').text = snils
         ET.SubElement(verification_measuring_instrument, 'ResultVerification').text = str(record['ResultVerification'])
 
         # Создание нового файла XML при достижении максимального количества записей
