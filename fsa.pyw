@@ -198,6 +198,9 @@ class MetrologyForm:
         
         # Установить окно по центру главного экрана
         self._set_window_center()
+        
+        # Показать окно
+        root.deiconify()
 
     def _set_window_center(self):
         self.master.update_idletasks()
@@ -246,12 +249,10 @@ class MetrologyForm:
     def _hide_spinner(self):
         self.canvas.grid_remove()
 
-
-
-
 # Создаем окно приложения
 root = tk.Tk()
-
+# Скрыть окно
+root.withdraw()
 # Создаем экземпляр формы
 form = MetrologyForm(root)
 
