@@ -1,0 +1,19 @@
+{
+  "metrologists": [
+    {
+      "LastName": "Иванов",
+      "FirstName": "Иван",
+      "SNILS": 12345678901
+    },
+    {
+      "LastName": "Петров",
+      "FirstName": "Петр",
+      "SNILS": 23456789012
+    },
+    {
+      "LastName": "Сидоров",
+      "FirstName": "Сидор",
+      "SNILS": 34567890123
+    }
+  ]
+}
