@@ -115,7 +115,7 @@ class RestAPI:
             vrf_date = parse(verification['vriInfo']['vrfDate']).strftime('%Y-%m-%d')
             valid_date = verification['vriInfo'].get('validDate', None)
             if valid_date:
-                vrf_date = parse(valid_date).strftime('%Y-%m-%d')
+                valid_date = parse(valid_date).strftime('%Y-%m-%d')
             applicable = verification['vriInfo'].get('applicable', None)
             conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
             verification_data.append({
