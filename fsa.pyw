@@ -4,6 +4,7 @@ from datetime import datetime
 from xml.etree import ElementTree
 import tkinter as tk
 from tkinter import messagebox
+from tkinter import ttk
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
 from dateutil.parser import parse
@@ -186,22 +187,38 @@ class MetrologyForm:
         self.submit_button = tk.Button(self.master, text='Сформировать XML', command=self.submit_form, width=20)
         self.submit_button.grid(row=3, column=0, columnspan=2, pady=10)
         
+        # создаем холст в центре формы
+        self.canvas = tk.Canvas(self.master)
+        self.canvas.grid(row=0, column=0, rowspan=4, columnspan=2, sticky='NSEW')
+        
+        # Создаем спиннер
+        self.spinner = ttk.Progressbar(self.canvas, mode='indeterminate')
+        self.spinner.pack(expand=True, fill='both')
+        self.spinner.start(5)
+        self.canvas.grid_remove()        
+        
+        # Установить окно по центру главного экрана
+        self._set_window_center()
+
+    def _set_window_center(self):
+        self.master.update_idletasks()
+        screen_width = self.master.winfo_screenwidth()
+        screen_height = self.master.winfo_screenheight()
+        width = self.master.winfo_width()
+        height = self.master.winfo_height()
+        x = int((screen_width / 2) - (width / 2))
+        y = int((screen_height / 2) - (height / 2))
+        self.master.geometry(f'{width}x{height}+{x}+{y}')
+        
     def _validate_input(self, input_char):
         if not input_char.isdigit():
             return False
         return True
-
-    def _set_visible_elements(self, is_visible):
-        if is_visible:
-                for widget in [self.number_label, self.number_entry, self.metrologist_label, self.metrologist_optionmenu, self.publish_checkbutton, self.submit_button]:
-                        widget.grid()
-        else:
-                for widget in [self.number_label, self.number_entry, self.metrologist_label, self.metrologist_optionmenu, self.publish_checkbutton, self.submit_button]:
-                        widget.grid_remove()
     
     def submit_form(self):
         # Считываем введенные данные
-        protocol_id = int(self.number_entry.get())
+        protocol_id = self.number_entry.get()
+        protocol_id = 0 if not protocol_id else int(protocol_id)
         if protocol_id < 100000:
             return
         metrologist = self.metrologist_var.get()
@@ -210,7 +227,7 @@ class MetrologyForm:
         folder_selected = filedialog.askdirectory()
         if not folder_selected:
             return
-        self._set_visible_elements(False)
+        self._show_spinner()
         records = self.restapi.get_report_data(protocol_id);
         if records:
                 first_name = self.metrologists_list[metrologists_i]['FirstName']
@@ -222,7 +239,15 @@ class MetrologyForm:
                     messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
         else:
                 messagebox.showerror('Ошибка', 'Не удалось запросить протокол АРШИН')
-        self._set_visible_elements(True)        
+        self._hide_spinner()
+        
+    def _show_spinner(self):
+        self.canvas.grid()
+                
+    def _hide_spinner(self):
+        self.canvas.grid_remove()
+
+
 
 
 # Создаем окно приложения
