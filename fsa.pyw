@@ -1,4 +1,4 @@
-import json, re, requests, os
+import json, re, requests, os, concurrent.futures
 from typing import Optional, List
 from datetime import datetime
 from xml.etree import ElementTree
@@ -109,6 +109,23 @@ class RestAPI:
         except requests.exceptions.RequestException:
             return None
 
+    def process_verification(self, id: int):
+        verification = json.loads(self.verification(id))['result']
+        mitype = verification['miInfo']['singleMI']['mitypeType']
+        vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
+        valid_date = verification['vriInfo'].get('validDate', None)
+        if valid_date:
+            valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
+        applicable = verification['vriInfo'].get('applicable', None)
+        conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
+        return {
+            'TypeMeasuringInstrument': mitype,
+            'DateVerification': vrf_date,
+            'DateEndVerification': valid_date,
+            'ResultVerification': conclusion,
+            'NumberVerification': id,
+        }
+
     def get_report_data(self, id: int) -> Optional[List[dict]]:
         verification_data = []
 
@@ -119,24 +136,16 @@ class RestAPI:
 
         xml_protocol = ElementTree.fromstring(report)
         records = xml_protocol.find('.//appProcessed').findall('record')
+        records = [record for record in xml_protocol.findall('.//appProcessed/record')]
+        verifications = [record.find('.//success/globalID').text for record in records]
 
-        for record in records:
-            verification_id = record.find('.//success/globalID').text
-            verification = json.loads(self.verification(verification_id))['result']
-            mitype = verification['miInfo']['singleMI']['mitypeType']
-            vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
-            valid_date = verification['vriInfo'].get('validDate', None)
-            if valid_date:
-                valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
-            applicable = verification['vriInfo'].get('applicable', None)
-            conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
-            verification_data.append({
-                'TypeMeasuringInstrument': mitype,
-                'DateVerification': vrf_date,
-                'DateEndVerification': valid_date,
-                'ResultVerification': conclusion,
-                'NumberVerification': verification_id,
-            })
+        if len(verifications) > 10:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                results = executor.map(self.process_verification, verifications)
+                verification_data.extend(list(results))
+        else:
+            verification_data = [self.process_verification(id) for id in verifications]
+
         return verification_data
 
     def status(self, id: int) -> Optional[str]:
@@ -238,21 +247,20 @@ class MetrologyForm:
         metrologist = self.metrologist_var.get()
         metrologists_i = self.metrologists.index(metrologist)
         save_method = 2 - self.publish_var.get() # 1 - черновик, 2 - отправлено
-        folder_selected = filedialog.askdirectory()
-        if not folder_selected:
-            return
         self._show_spinner()
-        records = self.restapi.get_report_data(protocol_id);
-        if records:
-                first_name = self.metrologists_list[metrologists_i]['FirstName']
-                last_name = self.metrologists_list[metrologists_i]['LastName']
-                snils = self.metrologists_list[metrologists_i]['SNILS']
-                if createXML(folder_selected, protocol_id, first_name, last_name, snils, records, save_method):
-                    messagebox.showinfo('Успех', 'XML файлы были сохранены')
-                else:
-                    messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
-        else:
-                messagebox.showerror('Ошибка', 'Не удалось запросить протокол АРШИН')
+        folder_selected = filedialog.askdirectory()
+        if folder_selected:        
+            records = self.restapi.get_report_data(protocol_id);
+            if records:
+                    first_name = self.metrologists_list[metrologists_i]['FirstName']
+                    last_name = self.metrologists_list[metrologists_i]['LastName']
+                    snils = self.metrologists_list[metrologists_i]['SNILS']
+                    if createXML(folder_selected, protocol_id, first_name, last_name, snils, records, save_method):
+                        messagebox.showinfo('Успех', 'XML файлы были сохранены')
+                    else:
+                        messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
+            else:
+                    messagebox.showerror('Ошибка', 'Не удалось запросить протокол АРШИН')
         self._hide_spinner()
         
     def _show_spinner(self):
