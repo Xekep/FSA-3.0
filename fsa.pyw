@@ -15,6 +15,19 @@ def get_metrologists_list() -> list:
             json_data = file.read()
         # Декодирование JSON-строки в список Python
         metrologists = json.loads(json_data)['metrologists']
+        # Проверка соответствия структуре
+        if isinstance(metrologists, list):
+            for element in metrologists:
+                if isinstance(element, dict):
+                    if "LastName" in element and "FirstName" in element and "SNILS" in element:
+                        if not all(isinstance(element[field], str) for field in ["LastName", "FirstName", "SNILS"]):
+                            raise ValueError("Элемент содержит некорректные данные")
+                    else:
+                        raise ValueError("Элемент не содержит всех необходимых полей")
+                else:
+                    raise ValueError("Элемент не является объектом")
+        else:
+            raise ValueError("Данные не содержат массива")
         return metrologists
     except:
         return None
