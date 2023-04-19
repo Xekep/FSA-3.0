@@ -110,7 +110,10 @@ class RestAPI:
             return None
 
     def process_verification(self, id: int):
-        verification = json.loads(self.verification(id))['result']
+        response = self.verification(id)
+        if not response:
+            return None
+        verification = json.loads(response)['result']
         mitype = verification['miInfo']['singleMI']['mitypeType']
         vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
         valid_date = verification['vriInfo'].get('validDate', None)
@@ -127,7 +130,7 @@ class RestAPI:
         }
 
     def get_report_data(self, id: int) -> Optional[List[dict]]:
-        verification_data = []
+        responses_data = []
 
         # Получение данных для формирования XML
         report = self.get_report(id)
@@ -137,16 +140,32 @@ class RestAPI:
         xml_protocol = ElementTree.fromstring(report)
         records = xml_protocol.find('.//appProcessed').findall('record')
         records = [record for record in xml_protocol.findall('.//appProcessed/record')]
-        verifications = [record.find('.//success/globalID').text for record in records]
+        verifications = []
+        missing_counter = 0
 
+        for record in records:
+            global_id = record.findtext('.//success/globalID', default=None)
+            if global_id:
+                verifications.append(global_id)
+            else:
+                missing_counter += 1
+        
         if len(verifications) > 10:
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 results = executor.map(self.process_verification, verifications)
-                verification_data.extend(list(results))
+                responses_data.extend(list(results))
         else:
-            verification_data = [self.process_verification(id) for id in verifications]
+            responses_data = [self.process_verification(id) for id in verifications]
 
-        return verification_data
+        failed_requests = 0
+        verification_data = []
+        for response in responses_data:
+            if not response:
+                failed_requests += 1
+            else:
+                verification_data.append(response)
+
+        return {'records': verification_data, 'total_records': len(records), 'saved_records': len(verification_data), 'skipped_records': missing_counter, 'failed_requests': failed_requests  }
 
     def status(self, id: int) -> Optional[str]:
         url = f'{self.ARSHIN_BASE_URL}api/applications/{id}/status'
@@ -250,13 +269,22 @@ class MetrologyForm:
         self._show_spinner()
         folder_selected = filedialog.askdirectory()
         if folder_selected:        
-            records = self.restapi.get_report_data(protocol_id);
-            if records:
+            report_data = self.restapi.get_report_data(protocol_id);
+            if report_data:
+                    failed_requests = report_data['failed_requests']
+                    if failed_requests:
+                        result = messagebox.askyesno("Предупреждение", f"Сервер не отвечал и было пропущено {failed_requests} записей\n\nВы уверены, что хотите продолжить формирование XML?")
+                        if not result:
+                            self._hide_spinner()
+                            return
                     first_name = self.metrologists_list[metrologists_i]['FirstName']
                     last_name = self.metrologists_list[metrologists_i]['LastName']
                     snils = self.metrologists_list[metrologists_i]['SNILS']
-                    if createXML(folder_selected, protocol_id, first_name, last_name, snils, records, save_method):
-                        messagebox.showinfo('Успех', 'XML файлы были сохранены')
+                    if createXML(folder_selected, protocol_id, first_name, last_name, snils, report_data['records'], save_method):
+                        total_records = report_data['total_records']
+                        saved_records = report_data['saved_records']
+                        skipped_records = report_data['skipped_records']
+                        messagebox.showinfo('Успех', f"XML файлы были сохранены\n\nСохранено {saved_records} из {total_records}\n\nПропущено {skipped_records} записей с ошибками\n\n")
                     else:
                         messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
             else:
