@@ -165,7 +165,13 @@ class RestAPI:
             else:
                 verification_data.append(response)
 
-        return {'records': verification_data, 'total_records': len(records), 'saved_records': len(verification_data), 'skipped_records': missing_counter, 'failed_requests': failed_requests  }
+        return {
+            'records': verification_data,
+            'total_records': len(records),
+            'saved_records': len(verification_data),
+            'skipped_records': missing_counter,
+            'failed_requests': failed_requests
+        }
 
     def status(self, id: int) -> Optional[str]:
         url = f'{self.ARSHIN_BASE_URL}api/applications/{id}/status'
@@ -280,11 +286,16 @@ class MetrologyForm:
                     first_name = self.metrologists_list[metrologists_i]['FirstName']
                     last_name = self.metrologists_list[metrologists_i]['LastName']
                     snils = self.metrologists_list[metrologists_i]['SNILS']
-                    if createXML(folder_selected, protocol_id, first_name, last_name, snils, report_data['records'], save_method):
+                    files = createXML(folder_selected, protocol_id, first_name, last_name, snils, report_data['records'], save_method)
+                    if files:
+                        total_files = len(files)
                         total_records = report_data['total_records']
                         saved_records = report_data['saved_records']
                         skipped_records = report_data['skipped_records']
-                        messagebox.showinfo('Успех', f"XML файлы были сохранены\n\nСохранено {saved_records} из {total_records}\n\nПропущено {skipped_records} записей с ошибками\n\n")
+                        message = f"XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}"
+                        if skipped_records > 0:
+                            message += f"\n\nПропущено поверок с ошибками {skipped_records}\n\n"
+                        messagebox.showinfo('Успех', message)
                     else:
                         messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
             else:
