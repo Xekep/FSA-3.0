@@ -207,15 +207,21 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.3')
+        self.master.title('Костыль 3.0 v1.4')
         self.master.resizable(False, False)
         
         # Создаем метку и поле ввода для чисел
         self.number_label = tk.Label(self.master, text='Введите номер протокола АРШИН:')
-        self.number_label.grid(row=0, column=0, sticky='W')
+        self.number_label.grid(row=0, column=0, sticky='NSEW')
         self.validate_cmd = self.master.register(self._validate_input)
         self.number_entry = tk.Entry(self.master, validate='key', validatecommand=(self.validate_cmd, '%S'))
         self.number_entry.grid(row=0, column=1)
+
+        # Добавляем контекстное меню
+        self.menu = tk.Menu(tearoff=0)
+        #self.menu.add_command(label='Копировать', accelerator='Ctrl+С', command=lambda: self.w.focus_force() or self.w.event_generate('<<Copy>>'))
+        self.menu.add_command(label='Вставить', accelerator='Ctrl+V', command=lambda: self.w.focus_force() or self.w.event_generate('<<Paste>>'))
+        self.number_entry.bind('<Button-3>', self._show_menu)
         
         # Создаем выпадающий список на основе данных из файла
         self.metrologist_label = tk.Label(self.master, text='Выберите метролога:')
@@ -250,6 +256,10 @@ class MetrologyForm:
         # Показать окно
         root.deiconify()
 
+    def _show_menu(self, event):
+        self.menu.post(event.x_root, event.y_root)
+        self.w = event.widget
+
     def _set_window_center(self):
         self.master.update_idletasks()
         screen_width = self.master.winfo_screenwidth()
@@ -271,7 +281,7 @@ class MetrologyForm:
         if report_data:
                 failed_requests = report_data['failed_requests']
                 if failed_requests:
-                    result = messagebox.askyesno("Предупреждение", f"Сервер не отвечал и было пропущено {failed_requests} записей\n\nВы уверены, что хотите продолжить формирование XML?")
+                    result = messagebox.askyesno('Предупреждение', f'Сервер не отвечал и было пропущено {failed_requests} записей\n\nВы уверены, что хотите продолжить формирование XML?')
                     if not result:
                         self._hide_spinner()
                         return
@@ -282,10 +292,10 @@ class MetrologyForm:
                     total_records = report_data['total_records']
                     saved_records = report_data['saved_records']
                     skipped_records = report_data['skipped_records']
-                    message = f"XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}"
+                    message = f'XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}'
                     if skipped_records > 0:
-                        message += f"\n\nПропущено поверок с ошибками {skipped_records}"
-                    message += "\n\nзатрачено времени %d:%02d\n\n" % divmod(time() - start_time, 60)
+                        message += f'\n\nПропущено поверок с ошибками {skipped_records}'
+                    message += '\n\nзатрачено времени %d:%02d\n\n' % divmod(time() - start_time, 60)
                     messagebox.showinfo('Успех', message)
                 else:
                     messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
