@@ -77,8 +77,11 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
             file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
             xml_string = ET.tostring(xml, encoding='unicode')
-            with open(file_name, 'w', encoding='utf-8') as f:
-                f.write(xml_string)
+            try:
+                with open(file_name, 'w', encoding='utf-8') as f:
+                    f.write(xml_string)
+            except IOError:
+                return None
             xml_array.append(file_name)
             xml = ET.Element('Message')
             verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
@@ -89,8 +92,11 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
         ET.SubElement(xml, 'SaveMethod').text = str(save_method)
         xml_string = ET.tostring(xml, encoding='unicode')
-        with open(file_name, 'w', encoding='utf-8') as f:
-            f.write(xml_string)
+        try:
+            with open(file_name, 'w', encoding='utf-8') as f:
+                f.write(xml_string)
+        except IOError:
+            return None
         xml_array.append(file_name)
 
     return xml_array
@@ -209,6 +215,7 @@ class MetrologyForm:
         self.restapi = RestAPI(token)
         self.master.title('Костыль 3.0 v1.4')
         self.master.resizable(False, False)
+        self.master.bind("<Control-KeyPress>", self.keypress)
         
         # Создаем метку и поле ввода для чисел
         self.number_label = tk.Label(self.master, text='Введите номер протокола АРШИН:')
@@ -255,6 +262,38 @@ class MetrologyForm:
         
         # Показать окно
         root.deiconify()
+
+    def keypress(self, e):
+        if e.keycode == 86 and e.keysym != 'v':
+            try:
+                text = self.master.clipboard_get()
+                if text:
+                    focused_widget = self.master.focus_get()
+                    focused_widget.event_generate("<<Paste>>")
+            except:
+                pass
+        elif e.keycode == 67 and e.keysym != 'c':
+            try:
+                text = self.master.selection_get()
+                if text:
+                    self.master.clipboard_clear()
+                    self.master.clipboard_append(text)
+            except:
+                pass
+        elif e.keycode == 88 and e.keysym != 'x':
+            try:
+                text = self.master.selection_get()
+                if text:
+                    self.master.clipboard_clear()
+                    self.master.clipboard_append(text)
+                    focused_widget = self.master.focus_get()
+                    focused_widget.event_generate("<<Cut>>")
+            except:
+                pass
+        elif e.keycode == 65 and e.keysym != 'x':
+                focused_widget = self.master.focus_get()
+                if isinstance(focused_widget, tk.Entry):
+                   focused_widget.select_range(0, tk.END)
 
     def _show_menu(self, event):
         self.menu.post(event.x_root, event.y_root)
