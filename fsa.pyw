@@ -219,10 +219,10 @@ class MetrologyForm:
         
         # Создаем метку и поле ввода для чисел
         self.number_label = tk.Label(self.master, text='Введите номер протокола АРШИН:')
-        self.number_label.grid(row=0, column=0, sticky='NSEW')
+        self.number_label.grid(row=0, column=0)
         self.validate_cmd = self.master.register(self._validate_input)
         self.number_entry = tk.Entry(self.master, validate='key', validatecommand=(self.validate_cmd, '%S'))
-        self.number_entry.grid(row=0, column=1)
+        self.number_entry.grid(row=0, column=1, sticky='NSEW')
 
         # Добавляем контекстное меню
         self.menu = tk.Menu(tearoff=0)
