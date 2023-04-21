@@ -1,4 +1,6 @@
-import json, re, requests, os, concurrent.futures
+import json, re, requests, os
+import concurrent.futures, threading
+from time import time
 from typing import Optional, List
 from datetime import datetime
 from xml.etree import ElementTree
@@ -43,7 +45,7 @@ def get_token() -> str:
     except:
         return None
 
-def createXML(folder, protocol_id, first_name, last_name, snils, records, save_method):
+def createXML(folder, protocol_id, metrologist, records, save_method):
     if not records:
         return []
 
@@ -64,9 +66,9 @@ def createXML(folder, protocol_id, first_name, last_name, snils, records, save_m
         ET.SubElement(verification_measuring_instrument, 'TypeMeasuringInstrument').text = str(record['TypeMeasuringInstrument'])
         approved_employee = ET.SubElement(verification_measuring_instrument, 'ApprovedEmployee')
         name = ET.SubElement(approved_employee, 'Name')
-        ET.SubElement(name, 'Last').text = last_name
-        ET.SubElement(name, 'First').text = first_name
-        ET.SubElement(approved_employee, 'SNILS').text = snils
+        ET.SubElement(name, 'Last').text = metrologist['LastName']
+        ET.SubElement(name, 'First').text = metrologist['FirstName']
+        ET.SubElement(approved_employee, 'SNILS').text = metrologist['SNILS']
         ET.SubElement(verification_measuring_instrument, 'ResultVerification').text = str(record['ResultVerification'])
 
         # Создание нового файла XML при достижении максимального количества записей
@@ -136,7 +138,7 @@ class RestAPI:
         report = self.get_report(id)
         if report is None:
             return None
-
+        
         xml_protocol = ElementTree.fromstring(report)
         records = xml_protocol.find('.//appProcessed').findall('record')
         records = [record for record in xml_protocol.findall('.//appProcessed/record')]
@@ -205,7 +207,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.2')
+        self.master.title('Костыль 3.0 v1.3')
         self.master.resizable(False, False)
         
         # Создаем метку и поле ввода для чисел
@@ -262,6 +264,34 @@ class MetrologyForm:
         if not input_char.isdigit():
             return False
         return True
+
+    def process_create_xml(self, folder_selected, protocol_id, metrologists_i, save_method):
+        start_time  = time()
+        report_data = self.restapi.get_report_data(protocol_id);
+        if report_data:
+                failed_requests = report_data['failed_requests']
+                if failed_requests:
+                    result = messagebox.askyesno("Предупреждение", f"Сервер не отвечал и было пропущено {failed_requests} записей\n\nВы уверены, что хотите продолжить формирование XML?")
+                    if not result:
+                        self._hide_spinner()
+                        return
+                metrologist = self.metrologists_list[metrologists_i]
+                files = createXML(folder_selected, protocol_id, metrologist, report_data['records'], save_method)
+                if files:
+                    total_files = len(files)
+                    total_records = report_data['total_records']
+                    saved_records = report_data['saved_records']
+                    skipped_records = report_data['skipped_records']
+                    message = f"XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}"
+                    if skipped_records > 0:
+                        message += f"\n\nПропущено поверок с ошибками {skipped_records}"
+                    message += "\n\nзатрачено времени %d:%02d\n\n" % divmod(time() - start_time, 60)
+                    messagebox.showinfo('Успех', message)
+                else:
+                    messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
+        else:
+                messagebox.showerror('Ошибка', 'Не удалось запросить протокол АРШИН')
+        self._hide_spinner()
     
     def submit_form(self):
         # Считываем введенные данные
@@ -274,33 +304,11 @@ class MetrologyForm:
         save_method = 2 - self.publish_var.get() # 1 - черновик, 2 - отправлено
         self._show_spinner()
         folder_selected = filedialog.askdirectory()
-        if folder_selected:        
-            report_data = self.restapi.get_report_data(protocol_id);
-            if report_data:
-                    failed_requests = report_data['failed_requests']
-                    if failed_requests:
-                        result = messagebox.askyesno("Предупреждение", f"Сервер не отвечал и было пропущено {failed_requests} записей\n\nВы уверены, что хотите продолжить формирование XML?")
-                        if not result:
-                            self._hide_spinner()
-                            return
-                    first_name = self.metrologists_list[metrologists_i]['FirstName']
-                    last_name = self.metrologists_list[metrologists_i]['LastName']
-                    snils = self.metrologists_list[metrologists_i]['SNILS']
-                    files = createXML(folder_selected, protocol_id, first_name, last_name, snils, report_data['records'], save_method)
-                    if files:
-                        total_files = len(files)
-                        total_records = report_data['total_records']
-                        saved_records = report_data['saved_records']
-                        skipped_records = report_data['skipped_records']
-                        message = f"XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}"
-                        if skipped_records > 0:
-                            message += f"\n\nПропущено поверок с ошибками {skipped_records}\n\n"
-                        messagebox.showinfo('Успех', message)
-                    else:
-                        messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
-            else:
-                    messagebox.showerror('Ошибка', 'Не удалось запросить протокол АРШИН')
-        self._hide_spinner()
+        if folder_selected:
+            t = threading.Thread(target=self.process_create_xml, args=(folder_selected, protocol_id, metrologists_i, save_method))
+            t.start()
+        else:
+            self._hide_spinner()
         
     def _show_spinner(self):
         self.canvas.grid()
