@@ -87,7 +87,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
             verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
 
     # Добавление оставшихся записей в последний файл
-    if len(verification_measuring_instrument_data) > 0: # 9127046
+    if len(verification_measuring_instrument_data) > 0:
         file_counter += 1
         file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
         ET.SubElement(xml, 'SaveMethod').text = str(save_method)
