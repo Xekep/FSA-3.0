@@ -240,7 +240,7 @@ class MetrologyForm:
         
         # Создаем чекбокс для опубликования результата
         self.publish_var = tk.BooleanVar(self.master)
-        self.publish_checkbutton = tk.Checkbutton(self.master, text='Черновики', variable=self.publish_var)
+        self.publish_checkbutton = tk.Checkbutton(self.master, text='Публиковать как черновики', variable=self.publish_var)
         self.publish_checkbutton.grid(row=2, column=0, sticky='W')
         
         # Создаем кнопку для отправки данных
