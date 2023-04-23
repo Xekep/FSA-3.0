@@ -213,7 +213,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.4')
+        self.master.title('Костыль 3.0 v1.5')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
