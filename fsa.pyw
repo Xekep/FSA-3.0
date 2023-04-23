@@ -52,7 +52,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
     file_counter = 0
     xml_array = []
     xml = ET.Element('Message')
-    multipart = True if len(records) > 999 else False
+    multipart = True if len(records) > 500 else False
 
     # Создание элемента VerificationMeasuringInstrumentData
     verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
@@ -72,7 +72,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         ET.SubElement(verification_measuring_instrument, 'ResultVerification').text = str(record['ResultVerification'])
 
         # Создание нового файла XML при достижении максимального количества записей
-        if (index + 1) % 999 == 0:
+        if (index + 1) % 500 == 0:
             file_counter += 1
             file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
