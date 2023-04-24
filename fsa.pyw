@@ -254,11 +254,11 @@ class MetrologyForm:
         
         # Создаем кнопку для отправки данных
         self.submit_button = tk.Button(self.master, text='Сформировать XML', command=self.submit_form, width=20)
-        self.submit_button.grid(row=3, column=0, columnspan=2, pady=10)
+        self.submit_button.grid(row=4, column=0, columnspan=2, pady=10)
         
         # создаем холст в центре формы
         self.canvas = tk.Canvas(self.master)
-        self.canvas.grid(row=0, column=0, rowspan=4, columnspan=2, sticky='NSEW')
+        self.canvas.grid(row=0, column=0, rowspan=5, columnspan=2, sticky='NSEW')
         
         # Создаем спиннер
         self.spinner = ttk.Progressbar(self.canvas, mode='indeterminate')
