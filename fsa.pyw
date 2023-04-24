@@ -158,8 +158,8 @@ class RestAPI:
             else:
                 missing_counter += 1
         
-        if len(verifications) > 10:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        if len(verifications) > 10 and self.num_threads > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads) as executor:
                 results = executor.map(self.process_verification, verifications)
                 responses_data.extend(list(results))
         else:
@@ -213,7 +213,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.5')
+        self.master.title('Костыль 3.0 v1.6')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
@@ -237,11 +237,20 @@ class MetrologyForm:
         self.metrologist_var.set(self.metrologists[0])
         self.metrologist_optionmenu = tk.OptionMenu(self.master, self.metrologist_var, *self.metrologists)
         self.metrologist_optionmenu.grid(row=1, column=1, sticky='NSEW')
+
+        # Создаем выпадающий список на основе данных из файла
+        self.threads = [1, 2, 3, 4, 5]
+        self.threads_label = tk.Label(self.master, text='Кол-во потоков:')
+        self.threads_label.grid(row=2, column=0, sticky='W')
+        self.threads_var = tk.StringVar(self.master)
+        self.threads_var.set(self.threads[1])
+        self.threads_optionmenu = tk.OptionMenu(self.master, self.threads_var, *self.threads)
+        self.threads_optionmenu.grid(row=2, column=1, sticky='NSEW')
         
         # Создаем чекбокс для опубликования результата
         self.publish_var = tk.BooleanVar(self.master)
         self.publish_checkbutton = tk.Checkbutton(self.master, text='Сохранять как черновики', variable=self.publish_var)
-        self.publish_checkbutton.grid(row=2, column=0, sticky='W')
+        self.publish_checkbutton.grid(row=3, column=0, sticky='W')
         
         # Создаем кнопку для отправки данных
         self.submit_button = tk.Button(self.master, text='Сформировать XML', command=self.submit_form, width=20)
@@ -344,6 +353,7 @@ class MetrologyForm:
     
     def submit_form(self):
         # Считываем введенные данные
+        self.num_threads = int(self.threads_var.get())
         protocol_id = self.number_entry.get()
         protocol_id = 0 if not protocol_id else int(protocol_id)
         if protocol_id < 100000:
