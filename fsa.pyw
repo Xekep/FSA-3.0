@@ -137,7 +137,7 @@ class RestAPI:
             'NumberVerification': id,
         }
 
-    def get_report_data(self, id: int) -> Optional[List[dict]]:
+    def get_report_data(self, id: int, num_threads = 1) -> Optional[List[dict]]:
         responses_data = []
 
         # Получение данных для формирования XML
@@ -158,8 +158,8 @@ class RestAPI:
             else:
                 missing_counter += 1
         
-        if len(verifications) > 10 and self.num_threads > 1:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+        if len(verifications) > 10 and num_threads > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
                 results = executor.map(self.process_verification, verifications)
                 responses_data.extend(list(results))
         else:
@@ -213,7 +213,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.6')
+        self.master.title('Костыль 3.0 v1.6.1')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
@@ -325,7 +325,7 @@ class MetrologyForm:
 
     def process_create_xml(self, folder_selected, protocol_id, metrologists_i, save_method):
         start_time  = time()
-        report_data = self.restapi.get_report_data(protocol_id);
+        report_data = self.restapi.get_report_data(protocol_id, self.num_threads);
         if report_data:
                 failed_requests = report_data['failed_requests']
                 if failed_requests:
