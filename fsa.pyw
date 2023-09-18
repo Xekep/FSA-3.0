@@ -117,25 +117,30 @@ class RestAPI:
         except requests.exceptions.RequestException:
             return None
 
-    def process_verification(self, id: int):
-        response = self.verification(id)
-        if not response:
+    def process_verification(self, id):
+        try:
+            if id == None:
+                return None
+            response = self.verification(id)
+            if not response:
+                return None
+            verification = json.loads(response)['result']
+            mitype = verification['miInfo']['singleMI']['mitypeType']
+            vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
+            valid_date = verification['vriInfo'].get('validDate', None)
+            if valid_date:
+                valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
+            applicable = verification['vriInfo'].get('applicable', None)
+            conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
+            return {
+                'TypeMeasuringInstrument': mitype,
+                'DateVerification': vrf_date,
+                'DateEndVerification': valid_date,
+                'ResultVerification': conclusion,
+                'NumberVerification': id,
+            }
+        except Exception:
             return None
-        verification = json.loads(response)['result']
-        mitype = verification['miInfo']['singleMI']['mitypeType']
-        vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
-        valid_date = verification['vriInfo'].get('validDate', None)
-        if valid_date:
-            valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
-        applicable = verification['vriInfo'].get('applicable', None)
-        conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
-        return {
-            'TypeMeasuringInstrument': mitype,
-            'DateVerification': vrf_date,
-            'DateEndVerification': valid_date,
-            'ResultVerification': conclusion,
-            'NumberVerification': id,
-        }
 
     def get_report_data(self, id: int, num_threads = 1) -> Optional[List[dict]]:
         responses_data = []
@@ -213,7 +218,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.6.1')
+        self.master.title('Костыль 3.0 v1.6.2')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
@@ -340,10 +345,13 @@ class MetrologyForm:
                     total_records = report_data['total_records']
                     saved_records = report_data['saved_records']
                     skipped_records = report_data['skipped_records']
-                    message = f'XML файлов сформировано {total_files}\n\nСохранено поверок {saved_records} из {total_records}'
+                    failed_requests = report_data['failed_requests']
+                    message = f'XML файлов сформировано {total_files}\n\nСохранено поверок: {saved_records} из {total_records}'
                     if skipped_records > 0:
-                        message += f'\n\nПропущено поверок с ошибками {skipped_records}'
-                    message += '\n\nзатрачено времени %d:%02d\n\n' % divmod(time() - start_time, 60)
+                        message += f'\n\nПропущено поверок из-за ошибки в протоколе: {skipped_records}'
+                    if failed_requests > 0:
+                        message += f'\n\nПропущено поверок, т.к. сервер не отвечал: {failed_requests}'
+                    message += '\n\nзатрачено времени: %d:%02d\n\n' % divmod(time() - start_time, 60)
                     messagebox.showinfo('Успех', message)
                 else:
                     messagebox.showerror('Ошибка', 'Ошибка сохранения XML файлов') 
