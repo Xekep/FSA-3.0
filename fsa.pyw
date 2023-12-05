@@ -132,11 +132,15 @@ class RestAPI:
                 valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
             applicable = verification['vriInfo'].get('applicable', None)
             conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
+            cancelled = False
+            if 'publication' in verification and verification['publication']:
+                cancelled = re.search('аннулирован', verification['publication']['status']) != None
             return {
                 'TypeMeasuringInstrument': mitype,
                 'DateVerification': vrf_date,
                 'DateEndVerification': valid_date,
                 'ResultVerification': conclusion,
+                'CancelledVerification': cancelled,
                 'NumberVerification': id,
             }
         except Exception:
@@ -171,18 +175,23 @@ class RestAPI:
             responses_data = [self.process_verification(id) for id in verifications]
 
         failed_requests = 0
+        cancelled_counter = 0
         verification_data = []
         for response in responses_data:
             if not response:
                 failed_requests += 1
             else:
-                verification_data.append(response)
+                if response['CancelledVerification']:
+                    cancelled_counter += 1
+                else:
+                    verification_data.append(response)
 
         return {
             'records': verification_data,
             'total_records': len(records),
-            'saved_records': len(verification_data),
+            'saved_records': len(verification_data) - cancelled_counter,
             'skipped_records': missing_counter,
+            'cancelled_records': cancelled_counter,
             'failed_requests': failed_requests
         }
 
@@ -218,7 +227,7 @@ class MetrologyForm:
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.6.2')
+        self.master.title('Костыль 3.0 v1.6.3')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
@@ -346,11 +355,14 @@ class MetrologyForm:
                     saved_records = report_data['saved_records']
                     skipped_records = report_data['skipped_records']
                     failed_requests = report_data['failed_requests']
+                    cancelled_records = report_data['cancelled_records']
                     message = f'XML файлов сформировано {total_files}\n\nСохранено поверок: {saved_records} из {total_records}'
                     if skipped_records > 0:
                         message += f'\n\nПропущено поверок из-за ошибки в протоколе: {skipped_records}'
                     if failed_requests > 0:
                         message += f'\n\nПропущено поверок, т.к. сервер не отвечал: {failed_requests}'
+                    if cancelled_records > 0:
+                        message += f'\n\nПропущено обнуленных: {cancelled_records}'
                     message += '\n\nзатрачено времени: %d:%02d\n\n' % divmod(time() - start_time, 60)
                     messagebox.showinfo('Успех', message)
                 else:
