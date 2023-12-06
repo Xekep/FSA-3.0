@@ -362,7 +362,7 @@ class MetrologyForm:
                     if failed_requests > 0:
                         message += f'\n\nПропущено поверок, т.к. сервер не отвечал: {failed_requests}'
                     if cancelled_records > 0:
-                        message += f'\n\nПропущено обнуленных: {cancelled_records}'
+                        message += f'\n\nПропущено аннулированных: {cancelled_records}'
                     message += '\n\nзатрачено времени: %d:%02d\n\n' % divmod(time() - start_time, 60)
                     messagebox.showinfo('Успех', message)
                 else:
