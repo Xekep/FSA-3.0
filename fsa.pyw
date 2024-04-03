@@ -10,6 +10,11 @@ from tkinter import ttk
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
 
+MAX_RECORDS_IN_XML = 500
+CONCLUSION_VALID = 1
+CONCLUSION_INVALID = 2
+MIN_PROTOCOL_ID = 100000
+
 def get_metrologists_list() -> list:
     try:
         # Чтение файла с данными metrologists
@@ -52,7 +57,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
     file_counter = 0
     xml_array = []
     xml = ET.Element('Message')
-    multipart = True if len(records) > 500 else False
+    multipart = True if len(records) > MAX_RECORDS_IN_XML else False
 
     # Создание элемента VerificationMeasuringInstrumentData
     verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
@@ -72,7 +77,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         ET.SubElement(verification_measuring_instrument, 'ResultVerification').text = str(record['ResultVerification'])
 
         # Создание нового файла XML при достижении максимального количества записей
-        if (index + 1) % 500 == 0:
+        if (index + 1) % MAX_RECORDS_IN_XML == 0:
             file_counter += 1
             file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
@@ -131,8 +136,12 @@ class RestAPI:
             if valid_date:
                 valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
             applicable = verification['vriInfo'].get('applicable', None)
-            cert = applicable.get('certNum', id)
-            conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
+            if applicable:
+                conclusion = CONCLUSION_VALID
+                cert = applicable.get('certNum', id)
+            else:
+                conclusion = CONCLUSION_INVALID
+                cert = ''
             cancelled = False
             if 'publication' in verification and verification['publication']:
                 cancelled = re.search('аннулирован', verification['publication']['status']) != None
@@ -378,7 +387,7 @@ class MetrologyForm:
         self.num_threads = int(self.threads_var.get())
         protocol_id = self.number_entry.get()
         protocol_id = 0 if not protocol_id else int(protocol_id)
-        if protocol_id < 100000:
+        if protocol_id < MIN_PROTOCOL_ID:
             return
         metrologist = self.metrologist_var.get()
         metrologists_i = self.metrologists.index(metrologist)
