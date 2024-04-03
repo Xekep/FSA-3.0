@@ -130,18 +130,19 @@ class RestAPI:
             if not response:
                 return None
             verification = json.loads(response)['result']
+            verification_info = verification['vriInfo']
             mitype = verification['miInfo']['singleMI']['mitypeType']
-            vrf_date = datetime.strptime(verification['vriInfo']['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
-            valid_date = verification['vriInfo'].get('validDate', None)
+            vrf_date = datetime.strptime(verification_info['vrfDate'], '%d.%m.%Y').strftime('%Y-%m-%d')
+            valid_date = verification_info.get('validDate', None)
             if valid_date:
                 valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
-            applicable = verification['vriInfo'].get('applicable', None)
-            if applicable:
-                conclusion = CONCLUSION_VALID
+            conclusion = CONCLUSION_VALID if 'applicable' in verification_info else CONCLUSION_INVALID
+            if conclusion == CONCLUSION_VALID:
+                applicable = verification_info.get('applicable', {})
                 cert = applicable.get('certNum', id)
             else:
-                conclusion = CONCLUSION_INVALID
-                cert = ''
+                inapplicable = verification_info.get('inapplicable', {})
+                cert = inapplicable.get('noticeNum', id)
             cancelled = False
             if 'publication' in verification and verification['publication']:
                 cancelled = re.search('аннулирован', verification['publication']['status']) != None
