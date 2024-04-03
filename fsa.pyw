@@ -131,6 +131,7 @@ class RestAPI:
             if valid_date:
                 valid_date = datetime.strptime(valid_date, '%d.%m.%Y').strftime('%Y-%m-%d')
             applicable = verification['vriInfo'].get('applicable', None)
+            cert = applicable.get('certNum', id)
             conclusion = 1 if applicable else 2  # 1 - пригоден, 2 - непригоден
             cancelled = False
             if 'publication' in verification and verification['publication']:
@@ -142,6 +143,7 @@ class RestAPI:
                 'ResultVerification': conclusion,
                 'CancelledVerification': cancelled,
                 'NumberVerification': id,
+                'CertNumber': cert
             }
         except Exception:
             return None
