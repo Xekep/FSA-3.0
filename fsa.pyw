@@ -14,32 +14,22 @@ MAX_RECORDS_IN_XML = 500
 CONCLUSION_VALID = 1
 CONCLUSION_INVALID = 2
 MIN_PROTOCOL_ID = 100000
+VERSION = "v1.6.3"
 
-def get_metrologists_list() -> list:
+def get_metrologists_list() -> Optional[List[dict]]:
     try:
-        # Чтение файла с данными metrologists
         with open('metrologists.json', 'r', encoding='utf-8') as file:
             json_data = file.read()
-        # Декодирование JSON-строки в список Python
-        metrologists = json.loads(json_data)['metrologists']
-        # Проверка соответствия структуре
-        if isinstance(metrologists, list):
-            for element in metrologists:
-                if isinstance(element, dict):
-                    if "LastName" in element and "FirstName" in element and "SNILS" in element:
-                        if not all(isinstance(element[field], str) for field in ["LastName", "FirstName", "SNILS"]):
-                            raise ValueError("Элемент содержит некорректные данные")
-                    else:
-                        raise ValueError("Элемент не содержит всех необходимых полей")
-                else:
-                    raise ValueError("Элемент не является объектом")
-        else:
-            raise ValueError("Данные не содержат массива")
+        metrologists = json.loads(json_data).get('metrologists', [])
+        for element in metrologists:
+            if not isinstance(element, dict) or "LastName" not in element or "FirstName" not in element or "SNILS" not in element:
+                raise ValueError("Некорректные данные в файле metrologists.json")
         return metrologists
-    except:
+    except Exception as e:
+        print(f"Ошибка при чтении файла metrologists.json: {e}")
         return None
 
-def get_token() -> str:
+def get_token() -> Optional[str]:
     try:
         with open('token.txt', 'r') as f:
             token = f.read().strip()
@@ -47,7 +37,8 @@ def get_token() -> str:
             if not re.match(pattern, token, re.IGNORECASE):
                 return None
             return token
-    except:
+    except Exception as e:
+        print(f"Ошибка при чтении файла token.txt: {e}")
         return None
 
 def createXML(folder, protocol_id, metrologist, records, save_method):
@@ -57,9 +48,8 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
     file_counter = 0
     xml_array = []
     xml = ET.Element('Message')
-    multipart = True if len(records) > MAX_RECORDS_IN_XML else False
+    multipart = len(records) > MAX_RECORDS_IN_XML
 
-    # Создание элемента VerificationMeasuringInstrumentData
     verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
 
     for index, record in enumerate(records):
@@ -79,14 +69,10 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         # Создание нового файла XML при достижении максимального количества записей
         if (index + 1) % MAX_RECORDS_IN_XML == 0:
             file_counter += 1
-            file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
+            file_name = os.path.join(folder, (f'{protocol_id}_part{file_counter}' if multipart else f'{protocol_id}') + '.xml')
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
             xml_string = ET.tostring(xml, encoding='unicode')
-            try:
-                with open(file_name, 'w', encoding='utf-8') as f:
-                    f.write(xml_string)
-            except IOError:
-                return None
+            writeXML(file_name, xml_string)
             xml_array.append(file_name)
             xml = ET.Element('Message')
             verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
@@ -97,14 +83,16 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
         ET.SubElement(xml, 'SaveMethod').text = str(save_method)
         xml_string = ET.tostring(xml, encoding='unicode')
-        try:
-            with open(file_name, 'w', encoding='utf-8') as f:
-                f.write(xml_string)
-        except IOError:
-            return None
+        writeXML(file_name, xml_string)
         xml_array.append(file_name)
-
     return xml_array
+
+def writeXML(file_name: str, xml_string: str):
+    try:
+        with open(file_name, 'w', encoding='utf-8') as f:
+            f.write(xml_string)
+    except IOError:
+        return None
 
 class RestAPI:
     ARSHIN_BASE_URL = 'https://fgis.gost.ru/fundmetrology/cm/'
@@ -120,6 +108,7 @@ class RestAPI:
             response.raise_for_status()
             return response.text.replace('gost:', '')
         except requests.exceptions.RequestException:
+            print(f"Ошибка при запросе протокола: {e}")
             return None
 
     def process_verification(self, id):
@@ -234,12 +223,12 @@ class MetrologyForm:
             messagebox.showerror('Ошибка', 'Токен не найден')
             os._exit(1)
         self.metrologists_list = get_metrologists_list()
-        if self.metrologists_list == None or len(self.metrologists_list) == 0:
+        if not self.metrologists_list:
             messagebox.showerror('Ошибка', 'Не удалось считать metrologists.json')
             os._exit(1)
         self.metrologists = [f"{d['LastName']} {d['FirstName']}" for d in self.metrologists_list]             
         self.restapi = RestAPI(token)
-        self.master.title('Костыль 3.0 v1.6.3')
+        self.master.title(f'Костыль 3.0 {VERSION}')
         self.master.resizable(False, False)
         self.master.bind("<Control-KeyPress>", self.keypress)
         
