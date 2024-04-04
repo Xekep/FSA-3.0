@@ -72,7 +72,8 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
             file_name = os.path.join(folder, (f'{protocol_id}_part{file_counter}' if multipart else f'{protocol_id}') + '.xml')
             ET.SubElement(xml, 'SaveMethod').text = str(save_method)
             xml_string = ET.tostring(xml, encoding='unicode')
-            writeXML(file_name, xml_string)
+            if not writeXML(file_name, xml_string):
+                return None
             xml_array.append(file_name)
             xml = ET.Element('Message')
             verification_measuring_instrument_data = ET.SubElement(xml, 'VerificationMeasuringInstrumentData')
@@ -83,7 +84,8 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         file_name = os.path.join(folder, str(protocol_id)) + (f'_part{file_counter}' if multipart else '') + '.xml'
         ET.SubElement(xml, 'SaveMethod').text = str(save_method)
         xml_string = ET.tostring(xml, encoding='unicode')
-        writeXML(file_name, xml_string)
+        if not writeXML(file_name, xml_string):
+            return None
         xml_array.append(file_name)
     return xml_array
 
@@ -91,8 +93,9 @@ def writeXML(file_name: str, xml_string: str):
     try:
         with open(file_name, 'w', encoding='utf-8') as f:
             f.write(xml_string)
+            return True
     except IOError:
-        return None
+        return False
 
 class RestAPI:
     ARSHIN_BASE_URL = 'https://fgis.gost.ru/fundmetrology/cm/'
