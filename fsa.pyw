@@ -14,7 +14,7 @@ MAX_RECORDS_IN_XML = 500
 CONCLUSION_VALID = 1
 CONCLUSION_INVALID = 2
 MIN_PROTOCOL_ID = 100000
-VERSION = "v1.6.3"
+VERSION = "v1.6.4"
 
 def get_metrologists_list() -> Optional[List[dict]]:
     try:
@@ -59,7 +59,7 @@ def createXML(folder, protocol_id, metrologist, records, save_method):
         if record['DateEndVerification'] is not None:
             ET.SubElement(verification_measuring_instrument, 'DateEndVerification').text = str(record['DateEndVerification'])
         ET.SubElement(verification_measuring_instrument, 'TypeMeasuringInstrument').text = str(record['TypeMeasuringInstrument'])
-        approved_employee = ET.SubElement(verification_measuring_instrument, 'ApprovedEmployee')
+        approved_employee = ET.SubElement(verification_measuring_instrument, 'ApprovedEmployees')
         name = ET.SubElement(approved_employee, 'Name')
         ET.SubElement(name, 'Last').text = metrologist['LastName']
         ET.SubElement(name, 'First').text = metrologist['FirstName']
