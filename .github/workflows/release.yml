@@ -1,0 +1,115 @@
+name: Build EXE and Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content fsa.pyw -Raw
+          $match = [regex]::Match($content, 'VERSION\s*=\s*"([^"]+)"')
+          if (-not $match.Success) { throw 'VERSION not found in fsa.pyw' }
+          $tag = $match.Groups[1].Value.Trim()
+          if ($tag -notmatch '^v\d+(\.\d+){1,2}$') { throw "Unexpected VERSION format: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "release_name=Релиз $($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
+      - name: Check whether tag already exists
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          git fetch --tags --force
+          $exists = git tag --list $tag
+          if ($exists) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Tag $tag already exists. Nothing to release."
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Set up Python
+        if: steps.tag.outputs.exists == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install build dependencies
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run tests
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          python -m py_compile fsa.pyw
+          python -m unittest discover -s tests -v
+
+      - name: Build EXE
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name "FSA-3.0" --icon "icon.ico" fsa.pyw
+          if (-not (Test-Path "dist/FSA-3.0.exe")) { throw 'PyInstaller did not produce dist/FSA-3.0.exe' }
+
+      - name: Package release
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item "dist/FSA-3.0.exe" "release/FSA-3.0.exe"
+          Copy-Item "token.txt" "release/token.txt"
+          Copy-Item "metrologists.json" "release/metrologists.json"
+          Copy-Item "readme.md" "release/README.md"
+          Compress-Archive -Path "release/*" -DestinationPath "EXE.version.zip" -Force
+
+      - name: Upload workflow artifact
+        if: steps.tag.outputs.exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FSA-3.0-${{ steps.version.outputs.tag }}
+          path: EXE.version.zip
+          if-no-files-found: error
+
+      - name: Create and push tag
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "${{ steps.version.outputs.release_name }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish GitHub Release
+        if: steps.tag.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" "EXE.version.zip#EXE.version.zip" --verify-tag --title "${{ steps.version.outputs.release_name }}" --generate-notes
