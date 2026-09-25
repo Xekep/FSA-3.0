@@ -1,4 +1,3 @@
-import concurrent.futures as futures
 import json
 import os
 import re
@@ -7,9 +6,10 @@ import tkinter as tk
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
-from time import time
+from time import monotonic, sleep, time
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 
@@ -18,8 +18,11 @@ MAX_RECORDS_IN_XML = 500
 CONCLUSION_VALID = 1
 CONCLUSION_INVALID = 2
 MIN_PROTOCOL_ID = 100000
-VERSION = "v1.7"
+VERSION = "v1.8"
 REQUEST_TIMEOUT = 30
+MAX_VERIFICATION_ATTEMPTS = 3
+MAX_MODIFICATION_HOPS = 10
+PUBLIC_REQUEST_INTERVAL_SECONDS = 0.55
 TOKEN_PATTERN = re.compile(
     r"^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$",
     re.IGNORECASE,
@@ -113,73 +116,185 @@ def load_metrologists(path: str = "metrologists.json") -> list[Metrologist]:
 
 
 class RestAPI:
-    BASE_URL = "https://fgis.gost.ru/fundmetrology/cm/"
+    PRIVATE_BASE_URL = "https://fgis.gost.ru/fundmetrology/cm/"
+    PUBLIC_BASE_URL = "https://fgis.gost.ru/fundmetrology/eapi/"
 
     def __init__(self, token: str, timeout: int = REQUEST_TIMEOUT):
         self.timeout = timeout
-        self.session = requests.Session()
-        self.session.headers.update({"Authorization": f"Bearer {token}"})
 
-    def _get(self, path: str) -> Optional[str]:
+        self.private_session = requests.Session()
+        self.private_session.headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "FSA-3.0",
+            }
+        )
+
+        self.public_session = requests.Session()
+        self.public_session.headers.update(
+            {
+                "Accept": "application/json",
+                "User-Agent": "FSA-3.0",
+            }
+        )
+        self._next_public_request_at = 0.0
+
+    def _private_get(self, path: str) -> Optional[str]:
         try:
-            response = self.session.get(f"{self.BASE_URL}{path}", timeout=self.timeout)
+            response = self.private_session.get(
+                f"{self.PRIVATE_BASE_URL}{path}",
+                timeout=self.timeout,
+            )
             response.raise_for_status()
             return response.text.replace("gost:", "")
         except requests.RequestException:
             return None
 
+    def _wait_public_slot(self) -> None:
+        wait_seconds = self._next_public_request_at - monotonic()
+        if wait_seconds > 0:
+            sleep(wait_seconds)
+        self._next_public_request_at = monotonic() + PUBLIC_REQUEST_INTERVAL_SECONDS
+
+    def _defer_retry(self, attempt: int) -> None:
+        delay = min(2.0, 0.75 * (2 ** max(0, attempt - 1)))
+        self._next_public_request_at = max(
+            self._next_public_request_at,
+            monotonic() + delay,
+        )
+
     def get_report(self, protocol_id: int) -> Optional[str]:
-        return self._get(f"api/applications/{protocol_id}/protocol")
+        return self._private_get(f"api/applications/{protocol_id}/protocol")
 
     def get_status(self, protocol_id: int) -> Optional[str]:
-        return self._get(f"api/applications/{protocol_id}/status")
+        return self._private_get(f"api/applications/{protocol_id}/status")
 
     def get_verification(self, verification_id: str) -> Optional[str]:
-        try:
-            response = self.session.get(
-                f"{self.BASE_URL}iaux/vri/{verification_id}",
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            return response.text
-        except requests.RequestException:
+        encoded_id = quote(str(verification_id), safe="")
+
+        for attempt in range(1, MAX_VERIFICATION_ATTEMPTS + 1):
+            self._wait_public_slot()
+            try:
+                response = self.public_session.get(
+                    f"{self.PUBLIC_BASE_URL}vri/{encoded_id}",
+                    timeout=self.timeout,
+                )
+            except requests.RequestException:
+                if attempt < MAX_VERIFICATION_ATTEMPTS:
+                    self._defer_retry(attempt)
+                    continue
+                return None
+
+            if 200 <= response.status_code < 300 and response.text:
+                return response.text
+
+            retryable = response.status_code == 429 or response.status_code >= 500
+            if retryable and attempt < MAX_VERIFICATION_ATTEMPTS:
+                self._defer_retry(attempt)
+                continue
+
             return None
+
+        return None
+
+    @staticmethod
+    def _mapping(value) -> dict:
+        return value if isinstance(value, dict) else {}
+
+    @classmethod
+    def _instrument_info(cls, payload: dict) -> dict:
+        mi_info = cls._mapping(payload.get("miInfo"))
+        for key in ("singleMI", "etaMI", "partyMI"):
+            candidate = cls._mapping(mi_info.get(key))
+            if candidate:
+                return candidate
+
+            candidate = cls._mapping(payload.get(key))
+            if candidate:
+                return candidate
+
+        return {}
+
+    @classmethod
+    def _next_version_id(cls, publication: dict) -> str:
+        for key in ("vriVerIdNext", "ver_id_next", "verIdNext"):
+            value = publication.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
 
     def process_verification(self, verification_id: Optional[str]) -> Optional[VerificationRecord]:
         if not verification_id:
             return None
 
-        response_text = self.get_verification(verification_id)
-        if not response_text:
-            return None
+        current_id = str(verification_id).strip()
+        visited: set[str] = set()
 
-        try:
-            payload = json.loads(response_text)["result"]
-            verification_info = payload["vriInfo"]
-            mi_info = payload["miInfo"]["singleMI"]
-            cancelled = bool(
-                re.search(
-                    r"аннулирован",
-                    payload.get("publication", {}).get("status", ""),
-                    re.IGNORECASE,
+        for _ in range(MAX_MODIFICATION_HOPS):
+            if not current_id or current_id in visited:
+                return None
+            visited.add(current_id)
+
+            response_text = self.get_verification(current_id)
+            if not response_text:
+                return None
+
+            try:
+                root = json.loads(response_text)
+                payload = root.get("result")
+                if not isinstance(payload, dict):
+                    return None
+
+                publication = self._mapping(payload.get("publication"))
+                status = str(publication.get("status", "")).lower()
+
+                if "модифицирован" in status:
+                    next_id = self._next_version_id(publication)
+                    if not next_id:
+                        return None
+                    current_id = next_id
+                    continue
+
+                if "аннулирован" in status:
+                    return VerificationRecord(
+                        number_verification=current_id,
+                        date_verification="",
+                        date_end_verification=None,
+                        type_measuring_instrument="",
+                        result_verification=CONCLUSION_INVALID,
+                        cancelled=True,
+                    )
+
+                verification_info = self._mapping(payload.get("vriInfo"))
+                instrument_info = self._instrument_info(payload)
+                if not verification_info or not instrument_info:
+                    return None
+
+                verification_date = parse_date(verification_info.get("vrfDate"))
+                if not verification_date:
+                    return None
+
+                if "applicable" in verification_info:
+                    conclusion = CONCLUSION_VALID
+                elif "inapplicable" in verification_info:
+                    conclusion = CONCLUSION_INVALID
+                else:
+                    return None
+
+                return VerificationRecord(
+                    number_verification=current_id,
+                    date_verification=verification_date,
+                    date_end_verification=parse_date(verification_info.get("validDate")),
+                    type_measuring_instrument=str(instrument_info.get("mitypeType", "")),
+                    result_verification=conclusion,
+                    cancelled=False,
                 )
-            )
-            return VerificationRecord(
-                number_verification=str(verification_id),
-                date_verification=parse_date(verification_info.get("vrfDate")) or "",
-                date_end_verification=parse_date(verification_info.get("validDate")),
-                type_measuring_instrument=str(mi_info.get("mitypeType", "")),
-                result_verification=(
-                    CONCLUSION_VALID
-                    if "applicable" in verification_info
-                    else CONCLUSION_INVALID
-                ),
-                cancelled=cancelled,
-            )
-        except Exception:
-            return None
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return None
 
-    def get_report_data(self, protocol_id: int, num_threads: int = 1) -> Optional[ReportData]:
+        return None
+
+    def get_report_data(self, protocol_id: int) -> Optional[ReportData]:
         report = self.get_report(protocol_id)
         if not report:
             return None
@@ -200,11 +315,7 @@ class RestAPI:
             else:
                 skipped_records += 1
 
-        if len(verification_ids) > 10 and num_threads > 1:
-            with futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-                responses = list(executor.map(self.process_verification, verification_ids))
-        else:
-            responses = [self.process_verification(item_id) for item_id in verification_ids]
+        responses = [self.process_verification(item_id) for item_id in verification_ids]
 
         valid_records = []
         failed_requests = 0
@@ -324,20 +435,17 @@ class MetrologyForm:
             row=1, column=1, padx=5, pady=5, sticky="nsew"
         )
 
-        tk.Label(self.master, text="Кол-во потоков:").grid(
-            row=2, column=0, padx=5, pady=5, sticky="w"
-        )
-        self.threads_var = tk.StringVar(value="2")
-        tk.OptionMenu(self.master, self.threads_var, "1", "2", "3", "4", "5").grid(
-            row=2, column=1, padx=5, pady=5, sticky="nsew"
-        )
-
         self.publish_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
             self.master,
             text="Сохранять как черновики",
             variable=self.publish_var,
-        ).grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ).grid(row=2, column=0, padx=5, pady=5, sticky="w")
+
+        tk.Label(
+            self.master,
+            text="Скорость запросов к публичному API ограничивается автоматически",
+        ).grid(row=3, column=0, columnspan=2, padx=5, pady=(0, 5), sticky="w")
 
         self.submit_button = tk.Button(
             self.master,
@@ -394,7 +502,6 @@ class MetrologyForm:
                 protocol_id,
                 metrologist,
                 2 - int(self.publish_var.get()),
-                safe_int(self.threads_var.get(), 1),
             ),
             daemon=True,
         )
@@ -406,11 +513,10 @@ class MetrologyForm:
         protocol_id: int,
         metrologist: Metrologist,
         save_method: int,
-        num_threads: int,
     ):
         start_time = time()
         try:
-            report_data = self.api.get_report_data(protocol_id, num_threads)
+            report_data = self.api.get_report_data(protocol_id)
             if not report_data:
                 self.master.after(
                     0, lambda: messagebox.showerror("Ошибка", "Не удалось запросить протокол АРШИН")
@@ -453,7 +559,7 @@ class MetrologyForm:
         def ask():
             result["value"] = messagebox.askyesno(
                 "Предупреждение",
-                f"Сервер не отвечал и было пропущено {failed_requests} записей\n\n"
+                f"Не удалось получить или разобрать {failed_requests} записей поверки\n\n"
                 f"Вы уверены, что хотите продолжить формирование XML?",
             )
             event.set()
@@ -476,7 +582,9 @@ class MetrologyForm:
         if report_data.skipped_records:
             parts.append(f"Пропущено поверок из-за ошибки в протоколе: {report_data.skipped_records}")
         if report_data.failed_requests:
-            parts.append(f"Пропущено поверок, т.к. сервер не отвечал: {report_data.failed_requests}")
+            parts.append(
+                f"Не удалось получить или разобрать поверок: {report_data.failed_requests}"
+            )
         if report_data.cancelled_records:
             parts.append(f"Пропущено аннулированных: {report_data.cancelled_records}")
         parts.append(f"Затрачено времени: {minutes}:{seconds:02d}")
